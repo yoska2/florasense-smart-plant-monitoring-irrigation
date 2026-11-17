@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FloraSense - ניטור ובקרה</title>
+<style>
+:root{font-family:Arial,sans-serif;background:#f4f7f4;color:#18351f}*{box-sizing:border-box}body{margin:0;padding:24px}.wrap{max-width:900px;margin:auto}
+nav{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px}nav a{text-decoration:none;padding:10px 14px;border-radius:10px;background:#e6ece7;color:#18351f;font-weight:700}nav a.active{background:#245f34;color:#fff}
+h1{margin:0 0 6px}.sub{color:#66756a;margin-bottom:22px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px}.card{background:#fff;border-radius:16px;padding:18px;box-shadow:0 4px 18px #00000010}.label{font-size:14px;color:#6b786e}.value{font-size:30px;font-weight:700;margin-top:8px}.sensor-status{margin-top:8px;font-weight:700}.section{margin-top:18px}.row{display:flex;gap:10px;flex-wrap:wrap;align-items:end}.field{flex:1;min-width:180px}input{width:100%;padding:12px;border:1px solid #ccd5ce;border-radius:10px;font-size:16px;margin-top:6px}button{border:0;border-radius:10px;padding:12px 18px;font-size:16px;font-weight:700;cursor:pointer}.primary{background:#245f34;color:#fff}.secondary{background:#e6ece7;color:#18351f}.status{padding:10px 12px;border-radius:10px;background:#edf2ee;margin-top:12px}.current-thresholds{margin:14px 0 18px;padding:14px;border-radius:12px;background:#f4f7f4}.current-thresholds-title{font-weight:700;margin-bottom:8px}.small{font-size:13px;color:#68756b}.dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:#999;margin-left:6px}.ok{background:#2f8f46}.bad{background:#c33}.on{background:#2879c9}@media(max-width:600px){body{padding:14px}.value{font-size:26px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<nav><a class="active" href="index.html">🌿 ניטור ובקרה</a><a href="ai.html">🤖 עוזר AI לצמח</a></nav>
+<h1>FloraSense</h1><div class="sub">מערכת ניטור והשקיה חכמה</div>
+
+<div class="grid">
+ <div class="card"><div class="label">לחות אדמה</div><div class="value" id="soil">--%</div><div id="soilStatus" class="sensor-status"></div></div>
+ <div class="card"><div class="label">טמפרטורה</div><div class="value" id="temp">--°C</div></div>
+ <div class="card"><div class="label">לחות אוויר</div><div class="value" id="hum">--%</div></div>
+ <div class="card"><div class="label">עוצמת אור</div><div class="value" id="light">-- lux</div><div id="lightStatus" class="sensor-status"></div></div>
+</div>
+
+<div class="card section">
+ <h2>מצב המערכת</h2>
+ <p><span class="dot" id="waterDot"></span>מיכל מים: <b id="water">--</b></p>
+ <p><span class="dot" id="pumpDot"></span>משאבה: <b id="pump">--</b></p>
+ <button class="primary" onclick="pumpOn()">הפעלת משאבה ל־3 שניות</button>
+ <div class="small" style="margin-top:10px">בהפעלה ידנית המשאבה תפעל ל־3 שניות גם אם חיישן הציפה מזהה שאין מים.</div>
+</div>
+
+<div class="card section">
+ <h2>הגדרות אוטומטיות</h2>
+ <div class="current-thresholds"><div class="current-thresholds-title">הספים הנוכחיים</div>
+ <div>סף לחות אדמה: <strong id="currentSoilMin">--%</strong></div>
+ <div>סף אור מינימלי: <strong id="currentLightMin">-- lux</strong></div></div>
+ <div class="row">
+  <div class="field"><label for="soilMin">מינימום לחות אדמה (%)</label><input id="soilMin" type="number" min="0" max="100"></div>
+  <div class="field"><label for="lightMin">מינימום אור (lux)</label><input id="lightMin" type="number" min="0" max="100000"></div>
+  <button class="secondary" onclick="saveSettings()">שמור הגדרות</button>
+ </div>
+</div>
+<div class="status" id="message">מתחבר ל-FloraSense...</div>
+</div>
+
+<script>
+const BASE='http://florasense.local';
+const $=id=>document.getElementById(id);
+let currentSoilThreshold=null;
+
+async function getJSON(path,options={}){
+ const r=await fetch(BASE+path,options); const data=await r.json().catch(()=>({}));
+ if(!r.ok) throw new Error(data.error||('HTTP '+r.status)); return data;
+}
+function updateSoilStatus(value){
+ if(currentSoilThreshold===null){$('soilStatus').textContent='';return;}
+ $('soilStatus').textContent=Number(value)<currentSoilThreshold?'⚠ לחות האדמה נמוכה מהסף':'✓ לחות האדמה תקינה';
+}
+async function refreshSensors(){
+ try{
+  const d=await getJSON('/sensors');
+  $('soil').textContent=d.soil1+'%'; updateSoilStatus(d.soil1);
+  $('temp').textContent=Number(d.temperature).toFixed(1)+'°C';
+  $('hum').textContent=Number(d.humidity).toFixed(1)+'%';
+  $('light').textContent=Math.round(d.light)+' lux';
+  $('lightStatus').textContent=d.lightStatus==='LOW'?'⚠ אין מספיק אור לצמח':d.lightStatus==='OK'?'✓ רמת האור תקינה':'לא ניתן לקרוא את חיישן האור';
+  $('water').textContent=d.waterOK?'יש מים':'אין מים'; $('waterDot').className='dot '+(d.waterOK?'ok':'bad');
+  $('pump').textContent=d.pumpRunning?(d.pumpMode==='manual'?'פועלת ידנית':'פועלת אוטומטית'):'כבויה';
+  $('pumpDot').className='dot '+(d.pumpRunning?'on':'ok'); $('message').textContent='מחובר ל-FloraSense';
+ }catch(e){$('message').textContent='לא ניתן להתחבר ל-FloraSense: '+e.message;}
+}
+async function loadSettings(){
+ try{
+  const d=await getJSON('/settings'); currentSoilThreshold=Number(d.soilMin);
+  $('soilMin').value=d.soilMin; $('lightMin').value=d.lightMin;
+  $('currentSoilMin').textContent=d.soilMin+'%'; $('currentLightMin').textContent=d.lightMin+' lux';
+ }catch(e){}
+}
+async function saveSettings(){
+ const soil=$('soilMin').value,light=$('lightMin').value;
+ try{
+  await getJSON('/settings?soilMin='+encodeURIComponent(soil)+'&lightMin='+encodeURIComponent(light),{method:'POST'});
+  await loadSettings(); await refreshSensors(); $('message').textContent='ההגדרות נשמרו בהצלחה';
+ }catch(e){$('message').textContent='שגיאה בשמירת ההגדרות: '+e.message;}
+}
+async function pumpOn(){
+ try{await getJSON('/pump?action=on',{method:'POST'});$('message').textContent='המשאבה הופעלה ל־3 שניות';await refreshSensors();}
+ catch(e){$('message').textContent='שגיאה בהפעלת המשאבה: '+e.message;}
+}
+(async()=>{await loadSettings();await refreshSensors();setInterval(refreshSensors,1000);})();
+</script>
+</body></html>

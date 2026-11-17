@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FloraSense - עוזר AI</title>
+<style>
+:root{font-family:Arial,sans-serif;background:#f4f7f4;color:#18351f}*{box-sizing:border-box}body{margin:0;padding:24px}.wrap{max-width:900px;margin:auto}
+nav{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px}nav a{text-decoration:none;padding:10px 14px;border-radius:10px;background:#e6ece7;color:#18351f;font-weight:700}nav a.active{background:#245f34;color:#fff}
+h1{margin:0 0 6px}.sub{color:#66756a;margin-bottom:22px}.card{background:#fff;border-radius:16px;padding:20px;box-shadow:0 4px 18px #00000010;margin-top:16px}
+textarea{width:100%;min-height:110px;resize:vertical;padding:14px;border:1px solid #ccd5ce;border-radius:10px;font:inherit;font-size:16px}button{border:0;border-radius:10px;padding:12px 18px;font-size:16px;font-weight:700;cursor:pointer}.primary{background:#245f34;color:#fff}.secondary{background:#e6ece7;color:#18351f}.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}.result{display:none}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-top:14px}.metric{padding:14px;border-radius:12px;background:#f4f7f4}.metric b{display:block;font-size:26px;margin-top:6px}.status{padding:11px 13px;border-radius:10px;background:#edf2ee;margin-top:14px}.small{font-size:13px;color:#68756b}.loading{opacity:.65;pointer-events:none}@media(max-width:600px){body{padding:14px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<nav><a href="index.html">🌿 ניטור ובקרה</a><a class="active" href="ai.html">🤖 עוזר AI לצמח</a></nav>
+<h1>עוזר AI לצמח</h1>
+<div class="sub">כתוב איזה צמח אתה מגדל וקבל ספים מומלצים ל־FloraSense</div>
+
+<div class="card">
+ <label for="plantMessage"><b>מה הצמח שלך?</b></label>
+ <textarea id="plantMessage" placeholder="לדוגמה: הצמח שלי הוא תות"></textarea>
+ <div class="actions"><button id="askBtn" class="primary" onclick="askAI()">קבל המלצה מה־AI</button></div>
+ <div class="small" style="margin-top:10px">ה־AI יציע סף מינימלי ללחות האדמה וסף מינימלי לעוצמת האור.</div>
+</div>
+
+<div class="card result" id="result">
+ <h2 id="plantName">המלצת AI</h2>
+ <div class="grid">
+  <div class="metric">סף לחות אדמה<b id="soilResult">--%</b></div>
+  <div class="metric">סף אור מינימלי<b id="lightResult">-- lux</b></div>
+ </div>
+ <p id="explanation"></p>
+ <div class="actions"><button class="primary" onclick="applyThresholds()">החל את הספים על FloraSense</button></div>
+</div>
+
+<div class="status" id="message">מוכן לקבלת שם הצמח.</div>
+</div>
+
+<script>
+const AI_API_URL='https://5cvoflgkpa.execute-api.us-east-1.amazonaws.com/plant-ai';
+const ESP32_BASE='http://florasense.local';
+const $=id=>document.getElementById(id);
+let recommendation=null;
+
+async function askAI(){
+ const text=$('plantMessage').value.trim();
+ if(!text){$('message').textContent='כתוב קודם את שם הצמח.';return;}
+ const btn=$('askBtn'); btn.disabled=true; btn.textContent='ה־AI בודק...'; $('message').textContent='מקבל המלצה מה־AI...';
+ try{
+  const r=await fetch(AI_API_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({plant:text})});
+  const data=await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(data.error||('HTTP '+r.status));
+  recommendation=data;
+  $('plantName').textContent='🌱 '+(data.plant||'המלצת AI');
+  $('soilResult').textContent=data.soilMin+'%';
+  $('lightResult').textContent=Number(data.lightMin).toLocaleString('he-IL')+' lux';
+  $('explanation').textContent=data.explanation||'';
+  $('result').style.display='block';
+  $('message').textContent='ההמלצה התקבלה. אפשר להחיל את הספים על FloraSense.';
+ }catch(e){$('message').textContent='שגיאה בקבלת המלצת AI: '+e.message;}
+ finally{btn.disabled=false;btn.textContent='קבל המלצה מה־AI';}
+}
+
+async function applyThresholds(){
+ if(!recommendation)return;
+ $('message').textContent='מעדכן את הספים ב-FloraSense...';
+ try{
+  const url=ESP32_BASE+'/settings?soilMin='+encodeURIComponent(recommendation.soilMin)+'&lightMin='+encodeURIComponent(recommendation.lightMin);
+  const r=await fetch(url,{method:'POST'});
+  const data=await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(data.error||('HTTP '+r.status));
+  $('message').textContent='✓ הספים עודכנו בהצלחה: לחות '+recommendation.soilMin+'%, אור '+recommendation.lightMin+' lux';
+ }catch(e){$('message').textContent='שגיאה בעדכון ה־ESP32: '+e.message;}
+}
+</script>
+</body></html>
